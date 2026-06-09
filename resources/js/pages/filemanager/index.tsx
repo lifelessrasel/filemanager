@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
+import { ArrowUpIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon } from 'lucide-react';
 import Container from '@/components/container';
-import HeaderContainer from '@/components/header-container';
 import Heading from '@/components/heading';
 import ServerLayout from '@/layouts/server/layout';
 import SiteBanners from '@/components/site-banners';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -407,7 +407,7 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
 
   return (
     <Container className="max-w-5xl">
-      <HeaderContainer>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <Heading title="File Manager" description={`Browse and manage files for ${site.domain}`} />
         <FileToolbar
           canWrite={can_write}
@@ -418,18 +418,19 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
           onCompress={handleCompress}
           onUpload={handleUpload}
         />
-      </HeaderContainer>
+      </div>
 
       <SiteBanners site={site} />
 
-      <div className="overflow-hidden rounded-md border shadow-xs">
-        <div className="bg-muted/30 flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="bg-card overflow-hidden rounded-xl border shadow-xs">
+        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
           <FileBreadcrumbs path={currentPath} rootLabel={site.domain} onNavigate={setCurrentPath} />
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0">
             {showUpButton && (
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => {
                   setCurrentPath(listingQuery.data?.parent ?? '');
                   setSearchQuery('');
@@ -439,17 +440,17 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
                 Up
               </Button>
             )}
-            <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
+            <div className="relative min-w-0 flex-1 sm:min-w-[12rem] sm:max-w-xs">
               <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Filter files..."
-                className="pl-8"
+                className="h-9 pl-8"
               />
             </div>
             {listingQuery.isFetching && !listingQuery.isLoading && (
-              <LoaderCircleIcon className="text-muted-foreground size-4 animate-spin" />
+              <LoaderCircleIcon className="text-muted-foreground size-4 shrink-0 animate-spin" aria-label="Refreshing" />
             )}
           </div>
         </div>
@@ -469,14 +470,25 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
         )}
 
         {listingQuery.isLoading ? (
-          <div className="space-y-0 p-4">
-            <Skeleton className="mb-3 h-10 w-full" />
-            <Skeleton className="mb-3 h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+          <div className="divide-y">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-3 px-4 py-3.5">
+                <Skeleton className="size-4 rounded-sm" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-2/5 max-w-xs" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : listingQuery.isError ? (
-          <div className="text-muted-foreground flex min-h-48 items-center justify-center p-6 text-sm">
-            Failed to load directory contents. Try refreshing.
+          <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+            <p className="text-sm font-medium">Could not load this folder</p>
+            <p className="text-muted-foreground text-xs">Check your connection and try again.</p>
+            <Button variant="outline" size="sm" onClick={refresh}>
+              <RefreshCwIcon />
+              Retry
+            </Button>
           </div>
         ) : (
           <>
@@ -506,14 +518,13 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
               }}
               onDelete={handleDelete}
             />
-            <div className="text-muted-foreground border-t px-4 py-2 text-xs">
-              {isFiltering ? `${filteredEntries.length} of ${entries.length}` : entries.length} {entries.length === 1 ? 'item' : 'items'}
-              {selectedPaths.size > 0 && (
-                <span>
-                  {' '}
-                  · {selectedPaths.size} selected
-                </span>
-              )}
+            <div className="text-muted-foreground flex flex-wrap items-center gap-2 border-t px-3 py-2.5 text-xs sm:px-4">
+              <span>
+                {isFiltering ? `${filteredEntries.length} of ${entries.length}` : entries.length}{' '}
+                {entries.length === 1 ? 'item' : 'items'}
+              </span>
+              {selectedPaths.size > 0 && <Badge variant="outline">{selectedPaths.size} selected</Badge>}
+              {isFiltering && <Badge variant="gray">Filtered</Badge>}
             </div>
           </>
         )}
