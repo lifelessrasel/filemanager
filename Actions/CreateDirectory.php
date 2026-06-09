@@ -17,7 +17,7 @@ final readonly class CreateDirectory
     public function handle(Site $site, array $input): void
     {
         $data = Validator::make($input, [
-            'path' => ['required', 'string'],
+            'path' => ['nullable', 'string'],
             'name' => ['required', 'string', 'regex:/^[^\/\\\\]+$/'],
         ])->validate();
 
@@ -25,6 +25,6 @@ final readonly class CreateDirectory
         $directory = $guard->resolve($data['path']);
         $absolutePath = $directory.'/'.trim($data['name']);
 
-        $site->server->os()->mkdir($absolutePath, $site->user);
+        $site->ssh()->exec('mkdir -p '.escapeshellarg($absolutePath), 'filemanager-mkdir', $site->id);
     }
 }

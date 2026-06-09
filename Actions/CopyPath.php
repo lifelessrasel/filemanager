@@ -18,7 +18,7 @@ final readonly class CopyPath
     {
         $data = Validator::make($input, [
             'path' => ['required', 'string'],
-            'destination' => ['required', 'string'],
+            'destination' => ['nullable', 'string'],
         ])->validate();
 
         $guard = new SitePathGuard($site);

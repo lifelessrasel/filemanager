@@ -4,13 +4,11 @@ import { Head, usePage } from '@inertiajs/react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
 import Container from '@/components/container';
-import CopyableBadge from '@/components/copyable-badge';
 import HeaderContainer from '@/components/header-container';
 import Heading from '@/components/heading';
 import ServerLayout from '@/layouts/server/layout';
 import SiteBanners from '@/components/site-banners';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDialog } from '@/hooks/use-dialog';
@@ -19,7 +17,9 @@ import FileBreadcrumbs from '@/pages/filemanager/components/file-breadcrumbs';
 import FileTable from '@/pages/filemanager/components/file-table';
 import FileToolbar from '@/pages/filemanager/components/file-toolbar';
 import NameDialog from '@/pages/filemanager/components/name-dialog';
+import { fileManagerHeaders, getApiErrorMessage, postFormData, postJson } from '@/pages/filemanager/lib/api-client';
 import { FileDirectoryListing, FileEntry, FileManagerPageProps } from '@/pages/filemanager/types';
+import { SharedData } from '@/types';
 import { Server } from '@/types/server';
 import { Site } from '@/types/site';
 import { toast } from 'sonner';
@@ -39,12 +39,15 @@ export default function FileManager() {
   );
 }
 
-function FileManagerContent({ server, site, initial_path, root_path, can_write }: PageProps) {
+function FileManagerContent({ server, site, initial_path, can_write }: PageProps) {
+  const { csrf_token } = usePage<SharedData>().props;
   const dialog = useDialog();
   const [currentPath, setCurrentPath] = useState(initial_path);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [dialogProcessing, setDialogProcessing] = useState(false);
   const [editFile, setEditFile] = useState<FileEntry | null>(null);
 
   const listingQuery = useQuery({
@@ -52,7 +55,7 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
     queryFn: async () => {
       const response = await axios.get<FileDirectoryListing>(
         route('site-filemanager.entries', { server: server.id, site: site.id }),
-        { params: { path: currentPath } },
+        { params: { path: currentPath }, headers: fileManagerHeaders(csrf_token) },
       );
 
       return response.data;
@@ -77,9 +80,26 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
     return entries.filter((entry) => entry.name.toLowerCase().includes(query));
   }, [entries, searchQuery]);
 
-  const post = async (url: string, data: Record<string, unknown>) => {
-    await axios.post(url, data);
-    refresh();
+  const openDialog = (mode: DialogMode) => {
+    setDialogError(null);
+    setDialogMode(mode);
+  };
+
+  const closeDialog = () => {
+    setDialogMode(null);
+    setDialogError(null);
+    setDialogProcessing(false);
+  };
+
+  const mutate = async (url: string, data: Record<string, unknown>, successMessage: string) => {
+    try {
+      await postJson(csrf_token, url, data);
+      toast.success(successMessage);
+      refresh();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
+      throw error;
+    }
   };
 
   const openEntry = (entry: FileEntry) => {
@@ -99,11 +119,11 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
     formData.append('file', file);
 
     try {
-      await axios.post(route('site-filemanager.upload', routeParams), formData);
+      await postFormData(csrf_token, route('site-filemanager.upload', routeParams), formData);
       toast.success('File uploaded.');
       refresh();
-    } catch {
-      toast.error('Failed to upload file.');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
     }
   };
 
@@ -128,22 +148,21 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
 
   const handleCopy = async (entry: FileEntry) => {
     try {
-      await post(route('site-filemanager.copy', routeParams), {
-        path: entry.path,
-        destination: currentPath,
-      });
-      toast.success('Copied successfully.');
+      await mutate(
+        route('site-filemanager.copy', routeParams),
+        { path: entry.path, destination: currentPath },
+        'Copied successfully.',
+      );
     } catch {
-      toast.error('Failed to copy.');
+      return;
     }
   };
 
   const handleExtract = async (entry: FileEntry) => {
     try {
-      await post(route('site-filemanager.extract', routeParams), { path: entry.path });
-      toast.success('Archive extracted.');
+      await mutate(route('site-filemanager.extract', routeParams), { path: entry.path }, 'Archive extracted.');
     } catch {
-      toast.error('Failed to extract archive.');
+      return;
     }
   };
 
@@ -156,47 +175,50 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
       toast.error('Select a file or folder to compress.');
       return;
     }
-    setDialogMode('compress');
+    openDialog('compress');
   };
 
   const submitNameDialog = async (name: string) => {
+    setDialogProcessing(true);
+    setDialogError(null);
+
     try {
       if (dialogMode === 'file') {
-        await post(route('site-filemanager.files.store', routeParams), { path: currentPath, name });
-        toast.success('File created.');
+        await mutate(route('site-filemanager.files.store', routeParams), { path: currentPath, name }, 'File created.');
       } else if (dialogMode === 'directory') {
-        await post(route('site-filemanager.directories.store', routeParams), { path: currentPath, name });
-        toast.success('Directory created.');
+        await mutate(route('site-filemanager.directories.store', routeParams), { path: currentPath, name }, 'Directory created.');
       } else if (dialogMode === 'rename' && selectedEntry) {
-        await post(route('site-filemanager.rename', routeParams), { path: selectedEntry.path, name });
-        toast.success('Renamed successfully.');
+        await mutate(route('site-filemanager.rename', routeParams), { path: selectedEntry.path, name }, 'Renamed successfully.');
       } else if (dialogMode === 'compress' && selectedEntry) {
-        await post(route('site-filemanager.compress', routeParams), { path: selectedEntry.path, name });
-        toast.success('Archive created.');
+        await mutate(route('site-filemanager.compress', routeParams), { path: selectedEntry.path, name }, 'Archive created.');
       }
-    } catch {
-      toast.error('Action failed.');
+
+      closeDialog();
+    } catch (error) {
+      setDialogError(getApiErrorMessage(error));
+    } finally {
+      setDialogProcessing(false);
     }
   };
 
   const dialogCopy = {
     file: {
       title: 'Create file',
-      description: 'Create a new empty file in the current directory.',
+      description: 'Create a new empty file in this folder.',
       label: 'File name',
       confirmLabel: 'Create',
       defaultValue: '',
     },
     directory: {
       title: 'Create folder',
-      description: 'Create a new folder in the current directory.',
+      description: 'Create a new folder in this location.',
       label: 'Folder name',
       confirmLabel: 'Create',
       defaultValue: '',
     },
     rename: {
       title: 'Rename',
-      description: 'Enter a new name for the selected item.',
+      description: 'Choose a new name for this item.',
       label: 'Name',
       confirmLabel: 'Rename',
       defaultValue: selectedEntry?.name ?? '',
@@ -222,21 +244,14 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
           canWrite={can_write}
           loading={listingQuery.isFetching}
           onRefresh={refresh}
-          onCreateFile={() => setDialogMode('file')}
-          onCreateDirectory={() => setDialogMode('directory')}
+          onCreateFile={() => openDialog('file')}
+          onCreateDirectory={() => openDialog('directory')}
           onCompress={handleCompress}
           onUpload={uploadFile}
         />
       </HeaderContainer>
 
       <SiteBanners site={site} />
-
-      <Card>
-        <CardContent className="text-muted-foreground flex flex-col gap-2 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <p>Files are managed over SSH as the site user. Uploads pass through Vito before reaching the server.</p>
-          <CopyableBadge text={root_path} tooltip />
-        </CardContent>
-      </Card>
 
       <div className="overflow-hidden rounded-md border shadow-xs">
         <div className="bg-muted/30 flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -292,7 +307,7 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
               onDownload={handleDownload}
               onRename={(entry) => {
                 setSelectedEntry(entry);
-                setDialogMode('rename');
+                openDialog('rename');
               }}
               onCopy={handleCopy}
               onExtract={handleExtract}
@@ -317,12 +332,14 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
         <NameDialog
           key={dialogMode ?? 'closed'}
           open={dialogMode !== null}
-          onOpenChange={(open) => !open && setDialogMode(null)}
+          onOpenChange={(open) => !open && closeDialog()}
           title={activeDialog.title}
           description={activeDialog.description}
           label={activeDialog.label}
           defaultValue={activeDialog.defaultValue}
           confirmLabel={activeDialog.confirmLabel}
+          error={dialogError}
+          processing={dialogProcessing}
           onSubmit={submitNameDialog}
         />
       )}

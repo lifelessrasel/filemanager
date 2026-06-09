@@ -2,11 +2,14 @@ import { FormEvent, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Editor } from '@monaco-editor/react';
 import { LoaderCircleIcon } from 'lucide-react';
+import { usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useAppearance } from '@/hooks/use-appearance';
 import { useInputFocus } from '@/stores/useInputFocus';
+import { fileManagerHeaders, getApiErrorMessage, putJson } from '@/pages/filemanager/lib/api-client';
 import { FileEntry } from '@/pages/filemanager/types';
+import { SharedData } from '@/types';
 import { Server } from '@/types/server';
 import { Site } from '@/types/site';
 import { toast } from 'sonner';
@@ -26,6 +29,7 @@ export default function EditFileSheet({
   file: FileEntry | null;
   onSaved: () => void;
 }) {
+  const { csrf_token } = usePage<SharedData>().props;
   const { getActualAppearance } = useAppearance();
   const setFocused = useInputFocus((state) => state.setFocused);
   const [content, setContent] = useState('');
@@ -46,6 +50,7 @@ export default function EditFileSheet({
     axios
       .get(route('site-filemanager.content', { server: server.id, site: site.id }), {
         params: { path: file.path },
+        headers: fileManagerHeaders(csrf_token),
       })
       .then((response) => {
         setContent(response.data.content ?? '');
@@ -55,7 +60,7 @@ export default function EditFileSheet({
         onOpenChange(false);
       })
       .finally(() => setLoading(false));
-  }, [open, file, server.id, site.id, onOpenChange]);
+  }, [open, file, server.id, site.id, onOpenChange, csrf_token]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -65,15 +70,15 @@ export default function EditFileSheet({
 
     setSaving(true);
     try {
-      await axios.put(route('site-filemanager.content.update', { server: server.id, site: site.id }), {
+      await putJson(csrf_token, route('site-filemanager.content.update', { server: server.id, site: site.id }), {
         path: file.path,
         content,
       });
       toast.success('File saved.');
       onSaved();
       onOpenChange(false);
-    } catch {
-      toast.error('Failed to save file.');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
     } finally {
       setSaving(false);
     }

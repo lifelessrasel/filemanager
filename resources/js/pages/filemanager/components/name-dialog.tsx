@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Form, FormField, FormFields } from '@/components/ui/form';
+import InputError from '@/components/ui/input-error';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -12,6 +15,8 @@ export default function NameDialog({
   label,
   defaultValue = '',
   confirmLabel,
+  error,
+  processing,
   onSubmit,
 }: {
   open: boolean;
@@ -21,10 +26,11 @@ export default function NameDialog({
   label: string;
   defaultValue?: string;
   confirmLabel: string;
+  error?: string | null;
+  processing?: boolean;
   onSubmit: (name: string) => Promise<void> | void;
 }) {
   const [name, setName] = useState(defaultValue);
-  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -41,17 +47,11 @@ export default function NameDialog({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim()) {
+    if (!name.trim() || processing) {
       return;
     }
 
-    setProcessing(true);
-    try {
-      await onSubmit(name.trim());
-      handleOpenChange(false);
-    } finally {
-      setProcessing(false);
-    }
+    await onSubmit(name.trim());
   };
 
   return (
@@ -59,28 +59,37 @@ export default function NameDialog({
       <DialogContent className="sm:max-w-md" onOpenAutoFocus={(event) => event.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription className="sr-only">{description}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="filemanager-name">{label}</Label>
-            <Input
-              id="filemanager-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              autoFocus
-              disabled={processing}
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={processing}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={processing || !name.trim()}>
+        <Form id="filemanager-name-form" onSubmit={submit} className="p-4">
+          <FormFields>
+            <FormField>
+              <Label htmlFor="filemanager-name">{label}</Label>
+              <Input
+                id="filemanager-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                autoFocus
+                disabled={processing}
+              />
+              <p className="text-muted-foreground text-sm">{description}</p>
+              <InputError message={error ?? undefined} />
+            </FormField>
+          </FormFields>
+        </Form>
+        <DialogFooter>
+          <div className="flex items-center gap-2">
+            <Button form="filemanager-name-form" type="submit" disabled={processing || !name.trim()}>
+              {processing && <LoaderCircleIcon className="animate-spin" />}
               {confirmLabel}
             </Button>
-          </DialogFooter>
-        </form>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={processing}>
+                Cancel
+              </Button>
+            </DialogClose>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

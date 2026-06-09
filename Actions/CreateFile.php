@@ -17,7 +17,7 @@ final readonly class CreateFile
     public function handle(Site $site, array $input): void
     {
         $data = Validator::make($input, [
-            'path' => ['required', 'string'],
+            'path' => ['nullable', 'string'],
             'name' => ['required', 'string', 'regex:/^[^\/\\\\]+$/'],
         ])->validate();
 
