@@ -2,15 +2,16 @@ import { useCallback, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpIcon } from 'lucide-react';
+import { ArrowUpIcon, LoaderCircleIcon, SearchIcon } from 'lucide-react';
 import Container from '@/components/container';
+import CopyableBadge from '@/components/copyable-badge';
 import HeaderContainer from '@/components/header-container';
 import Heading from '@/components/heading';
 import ServerLayout from '@/layouts/server/layout';
 import SiteBanners from '@/components/site-banners';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDialog } from '@/hooks/use-dialog';
 import EditFileSheet from '@/pages/filemanager/components/edit-file-sheet';
@@ -41,6 +42,7 @@ export default function FileManager() {
 function FileManagerContent({ server, site, initial_path, root_path, can_write }: PageProps) {
   const dialog = useDialog();
   const [currentPath, setCurrentPath] = useState(initial_path);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [editFile, setEditFile] = useState<FileEntry | null>(null);
@@ -64,6 +66,17 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
 
   const routeParams = useMemo(() => ({ server: server.id, site: site.id }), [server.id, site.id]);
 
+  const entries = listingQuery.data?.entries ?? [];
+
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return entries;
+    }
+
+    return entries.filter((entry) => entry.name.toLowerCase().includes(query));
+  }, [entries, searchQuery]);
+
   const post = async (url: string, data: Record<string, unknown>) => {
     await axios.post(url, data);
     refresh();
@@ -73,6 +86,7 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
     if (entry.type === 'directory') {
       setCurrentPath(entry.path);
       setSelectedEntry(null);
+      setSearchQuery('');
       return;
     }
 
@@ -104,6 +118,9 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
       data: { path: entry.path },
       onSuccess: () => {
         toast.success('Deleted successfully.');
+        if (selectedEntry?.path === entry.path) {
+          setSelectedEntry(null);
+        }
         refresh();
       },
     });
@@ -132,6 +149,14 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
 
   const handleDownload = (entry: FileEntry) => {
     window.location.href = `${route('site-filemanager.download', routeParams)}?path=${encodeURIComponent(entry.path)}`;
+  };
+
+  const handleCompress = () => {
+    if (!selectedEntry) {
+      toast.error('Select a file or folder to compress.');
+      return;
+    }
+    setDialogMode('compress');
   };
 
   const submitNameDialog = async (name: string) => {
@@ -186,64 +211,82 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
   } as const;
 
   const activeDialog = dialogMode ? dialogCopy[dialogMode] : null;
+  const isFiltering = searchQuery.trim().length > 0;
+  const showUpButton = listingQuery.data?.parent !== null && listingQuery.data?.parent !== undefined;
 
   return (
-    <Container className="max-w-6xl">
+    <Container className="max-w-5xl">
       <HeaderContainer>
-        <Heading title="File Manager" description={`Manage files for ${site.domain}. Root: ${root_path}`} />
+        <Heading title="File Manager" description={`Browse and manage files for ${site.domain}`} />
+        <FileToolbar
+          canWrite={can_write}
+          loading={listingQuery.isFetching}
+          onRefresh={refresh}
+          onCreateFile={() => setDialogMode('file')}
+          onCreateDirectory={() => setDialogMode('directory')}
+          onCompress={handleCompress}
+          onUpload={uploadFile}
+        />
       </HeaderContainer>
 
       <SiteBanners site={site} />
 
-      <Alert>
-        <AlertDescription>
-          Files are managed over SSH as the site user. Large uploads pass through your Vito instance before reaching the server.
-        </AlertDescription>
-      </Alert>
-
       <Card>
-        <CardHeader className="gap-4 space-y-0">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <FileBreadcrumbs path={currentPath} rootLabel={site.domain} onNavigate={setCurrentPath} />
-            {listingQuery.data?.parent !== null && listingQuery.data?.parent !== undefined && (
-              <Button variant="outline" size="sm" onClick={() => setCurrentPath(listingQuery.data?.parent ?? '')}>
+        <CardContent className="text-muted-foreground flex flex-col gap-2 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>Files are managed over SSH as the site user. Uploads pass through Vito before reaching the server.</p>
+          <CopyableBadge text={root_path} tooltip />
+        </CardContent>
+      </Card>
+
+      <div className="overflow-hidden rounded-md border shadow-xs">
+        <div className="bg-muted/30 flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+          <FileBreadcrumbs path={currentPath} rootLabel={site.domain} onNavigate={setCurrentPath} />
+          <div className="flex flex-wrap items-center gap-2">
+            {showUpButton && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setCurrentPath(listingQuery.data?.parent ?? '');
+                  setSearchQuery('');
+                }}
+              >
                 <ArrowUpIcon />
                 Up
               </Button>
             )}
+            <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
+              <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Filter files..."
+                className="pl-8"
+              />
+            </div>
+            {listingQuery.isFetching && !listingQuery.isLoading && (
+              <LoaderCircleIcon className="text-muted-foreground size-4 animate-spin" />
+            )}
           </div>
-          <FileToolbar
-            canWrite={can_write}
-            loading={listingQuery.isFetching}
-            onRefresh={refresh}
-            onCreateFile={() => setDialogMode('file')}
-            onCreateDirectory={() => setDialogMode('directory')}
-            onCompress={() => {
-              if (!selectedEntry) {
-                toast.error('Select a file or folder to compress.');
-                return;
-              }
-              setDialogMode('compress');
-            }}
-            onUpload={uploadFile}
-          />
-        </CardHeader>
-        <CardContent>
-          {listingQuery.isLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          ) : listingQuery.isError ? (
-            <div className="text-destructive flex min-h-48 items-center justify-center rounded-lg border border-dashed">
-              Failed to load directory contents.
-            </div>
-          ) : (
+        </div>
+
+        {listingQuery.isLoading ? (
+          <div className="space-y-0 p-4">
+            <Skeleton className="mb-3 h-10 w-full" />
+            <Skeleton className="mb-3 h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : listingQuery.isError ? (
+          <div className="text-muted-foreground flex min-h-48 items-center justify-center p-6 text-sm">
+            Failed to load directory contents. Try refreshing.
+          </div>
+        ) : (
+          <>
             <FileTable
-              entries={listingQuery.data?.entries ?? []}
+              entries={filteredEntries}
               canWrite={can_write}
               selectedPath={selectedEntry?.path ?? null}
+              filtered={isFiltering}
               onOpen={openEntry}
               onEdit={(entry) => setEditFile(entry)}
               onDownload={handleDownload}
@@ -255,9 +298,20 @@ function FileManagerContent({ server, site, initial_path, root_path, can_write }
               onExtract={handleExtract}
               onDelete={handleDelete}
             />
-          )}
-        </CardContent>
-      </Card>
+            <div className="text-muted-foreground flex flex-col gap-1 border-t px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {isFiltering ? `${filteredEntries.length} of ${entries.length}` : entries.length}{' '}
+                {entries.length === 1 ? 'item' : 'items'}
+              </span>
+              {selectedEntry && (
+                <span>
+                  Selected: <span className="text-foreground font-medium">{selectedEntry.name}</span>
+                </span>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       {activeDialog && (
         <NameDialog

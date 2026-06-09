@@ -5,9 +5,11 @@ import {
   FolderPlusIcon,
   FolderUpIcon,
   LoaderCircleIcon,
+  MoreHorizontalIcon,
   RefreshCwIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function FileToolbar({
   canWrite,
@@ -46,34 +48,42 @@ export default function FileToolbar({
   };
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-          {loading ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}
-          Refresh
-        </Button>
-        {canWrite && (
-          <>
-            <Button variant="outline" size="sm" onClick={onCreateFile}>
-              <FilePlusIcon />
-              New file
-            </Button>
-            <Button variant="outline" size="sm" onClick={onCreateDirectory}>
-              <FolderPlusIcon />
-              New folder
-            </Button>
-            <Button variant="outline" size="sm" onClick={onCompress}>
-              <ArchiveIcon />
-              Compress
-            </Button>
-            <Button variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
-              {uploading ? <LoaderCircleIcon className="animate-spin" /> : <FolderUpIcon />}
-              Upload
-            </Button>
-            <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
-          </>
-        )}
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" onClick={onRefresh} disabled={loading} aria-label="Refresh">
+        {loading ? <LoaderCircleIcon className="animate-spin" /> : <RefreshCwIcon />}
+        <span className="hidden lg:block">Refresh</span>
+      </Button>
+      {canWrite && (
+        <>
+          <Button variant="outline" onClick={onCreateFile}>
+            <FilePlusIcon />
+            <span className="hidden lg:block">New file</span>
+          </Button>
+          <Button variant="outline" onClick={onCreateDirectory}>
+            <FolderPlusIcon />
+            <span className="hidden lg:block">New folder</span>
+          </Button>
+          <Button disabled={uploading} onClick={() => inputRef.current?.click()}>
+            {uploading ? <LoaderCircleIcon className="animate-spin" /> : <FolderUpIcon />}
+            <span className="hidden lg:block">Upload</span>
+          </Button>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="p-0" aria-label="More actions">
+                <span className="sr-only">More actions</span>
+                <MoreHorizontalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onCompress}>
+                <ArchiveIcon />
+                Compress selection
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
+        </>
+      )}
     </div>
   );
 }
