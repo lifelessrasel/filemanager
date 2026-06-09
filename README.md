@@ -36,7 +36,11 @@ For GitHub publishing, add the `vitodeploy-plugin` topic to https://github.com/l
 2. Install from: `https://github.com/lifelessrasel/filemanager`
 3. **Discover** (if developing locally) or install directly from GitHub
 4. **Install → Enable**
-5. Run `npm run build`
+5. On your VitoDeploy server, run `npm run build` (required for the sidebar link and UI)
+
+If `/filemanager` returns **500 Server Error**, the plugin frontend was not published yet. Disable and re-enable the plugin, then run `npm run build`.
+
+If the **File Manager** sidebar item is missing after enabling, run `npm run build` on the server. The sidebar patch updates `layout.tsx`, which only appears in the UI after a frontend rebuild.
 
 ## Installation hooks
 

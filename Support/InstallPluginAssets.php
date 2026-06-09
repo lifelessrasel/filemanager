@@ -4,6 +4,7 @@ namespace App\Vito\Plugins\Lifelessrasel\Filemanager\Support;
 
 use App\Actions\Ziggy\GetZiggyRoutes;
 use Illuminate\Support\Facades\File;
+use RuntimeException;
 
 final class InstallPluginAssets
 {
@@ -29,13 +30,29 @@ final class InstallPluginAssets
         GetZiggyRoutes::forgetCache();
     }
 
+    public function isPublished(): bool
+    {
+        return File::exists(resource_path('js/pages/filemanager/index.tsx'));
+    }
+
+    public function isLayoutPatched(): bool
+    {
+        $layoutPath = resource_path('js/layouts/server/layout.tsx');
+
+        if (! File::exists($layoutPath)) {
+            return false;
+        }
+
+        return str_contains(File::get($layoutPath), self::MARKER_START);
+    }
+
     private function publishFrontend(string $pluginRoot): void
     {
         $source = $pluginRoot.'/resources/js/pages/filemanager';
         $target = resource_path('js/pages/filemanager');
 
         if (! File::isDirectory($source)) {
-            return;
+            throw new RuntimeException('File Manager plugin frontend sources are missing.');
         }
 
         if (File::isDirectory($target)) {
@@ -43,6 +60,10 @@ final class InstallPluginAssets
         }
 
         File::copyDirectory($source, $target);
+
+        if (! File::exists($target.'/index.tsx')) {
+            throw new RuntimeException('File Manager plugin failed to publish frontend pages.');
+        }
     }
 
     private function patchServerLayout(string $pluginRoot): void
@@ -50,8 +71,12 @@ final class InstallPluginAssets
         $layoutPath = resource_path('js/layouts/server/layout.tsx');
         $patchPath = $pluginRoot.'/resources/patches/server-layout-nav.tsx.patch';
 
-        if (! File::exists($layoutPath) || ! File::exists($patchPath)) {
-            return;
+        if (! File::exists($layoutPath)) {
+            throw new RuntimeException('File Manager plugin could not find resources/js/layouts/server/layout.tsx.');
+        }
+
+        if (! File::exists($patchPath)) {
+            throw new RuntimeException('File Manager plugin sidebar patch file is missing.');
         }
 
         $contents = File::get($layoutPath);
@@ -59,25 +84,59 @@ final class InstallPluginAssets
             return;
         }
 
-        if (! str_contains($contents, 'FolderIcon')) {
-            $contents = str_replace(
-                "  GlobeIcon,\n",
-                "  FolderIcon,\n  GlobeIcon,\n",
-                $contents
-            );
-        }
-
+        $contents = $this->ensureFolderIconImport($contents);
         $patch = trim(File::get($patchPath));
-        $needle = "                icon: RocketIcon,\n              },\n              {\n                title: 'Domains',";
 
-        if (! str_contains($contents, $needle)) {
+        $needles = [
+            "                icon: RocketIcon,\n              },\n              {\n                title: 'Domains'," => "'Domains'",
+            "                icon: RocketIcon,\n              },\n              {\n                title: \"Domains\"," => '"Domains"',
+        ];
+
+        foreach ($needles as $needle => $domainsQuote) {
+            if (! str_contains($contents, $needle)) {
+                continue;
+            }
+
+            File::put(
+                $layoutPath,
+                str_replace(
+                    $needle,
+                    "                icon: RocketIcon,\n              },\n".$patch."\n              {\n                title: {$domainsQuote},",
+                    $contents
+                )
+            );
+
             return;
         }
 
-        File::put(
-            $layoutPath,
-            str_replace($needle, "                icon: RocketIcon,\n              },\n".$patch."\n              {\n                title: 'Domains',", $contents)
+        $pattern = '/(\{\s*\n\s*title:\s*[\'"]Application[\'"],\s*\n\s*href:\s*route\([\'"]application[\'"].*?\n\s*icon:\s*RocketIcon,\s*\n\s*\},)/s';
+
+        if (preg_match($pattern, $contents, $matches)) {
+            File::put($layoutPath, str_replace($matches[1], $matches[1]."\n".$patch, $contents));
+
+            return;
+        }
+
+        throw new RuntimeException(
+            'File Manager plugin could not patch the site sidebar. Re-enable the plugin after updating VitoDeploy, or add the nav item manually.'
         );
+    }
+
+    private function ensureFolderIconImport(string $contents): string
+    {
+        if (str_contains($contents, 'FolderIcon')) {
+            return $contents;
+        }
+
+        if (str_contains($contents, "  FlameIcon,\n  GlobeIcon,\n")) {
+            return str_replace("  FlameIcon,\n  GlobeIcon,\n", "  FlameIcon,\n  FolderIcon,\n  GlobeIcon,\n", $contents);
+        }
+
+        if (str_contains($contents, "  GlobeIcon,\n")) {
+            return str_replace("  GlobeIcon,\n", "  FolderIcon,\n  GlobeIcon,\n", $contents);
+        }
+
+        throw new RuntimeException('File Manager plugin could not add FolderIcon to the server layout imports.');
     }
 
     private function unpatchServerLayout(): void
@@ -91,6 +150,7 @@ final class InstallPluginAssets
         $pattern = '/\s*\/\* vitodeploy-filemanager-plugin:start \*\/.*?\/\* vitodeploy-filemanager-plugin:end \*\/\s*/s';
         $contents = preg_replace($pattern, "\n", $contents) ?? $contents;
         $contents = str_replace("  FolderIcon,\n  GlobeIcon,\n", "  GlobeIcon,\n", $contents);
+        $contents = str_replace("  FlameIcon,\n  FolderIcon,\n  GlobeIcon,\n", "  FlameIcon,\n  GlobeIcon,\n", $contents);
 
         File::put($layoutPath, $contents);
     }
