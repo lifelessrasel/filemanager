@@ -9,7 +9,7 @@ use Throwable;
 
 class PublishFileManagerAssetsCommand extends Command
 {
-    protected $signature = 'filemanager:publish {--check : Only report status} {--force : Re-apply the sidebar layout patch}';
+    protected $signature = 'filemanager:publish {--check : Only report status} {--force : Re-publish pages and re-apply the sidebar patch}';
 
     protected $description = 'Publish File Manager frontend pages and patch the site sidebar';
 
@@ -22,7 +22,8 @@ class PublishFileManagerAssetsCommand extends Command
         }
 
         try {
-            $assets->install($pluginRoot, (bool) $this->option('force'));
+            $force = (bool) $this->option('force');
+            $assets->install($pluginRoot, $force, $force);
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
@@ -32,7 +33,7 @@ class PublishFileManagerAssetsCommand extends Command
         $this->info('File Manager assets published.');
         $this->reportStatus($assets);
         $this->newLine();
-        $this->line('Next: run <fg=yellow>npm run build</> then <fg=yellow>php artisan optimize:clear</>');
+        $this->line('Next: run <fg=yellow>npm run build</> as root, then restart the container or run <fg=yellow>php artisan optimize</> with APP_KEY set.');
 
         return self::SUCCESS;
     }

@@ -16,10 +16,16 @@ final class InstallPluginAssets
 
     private const string LEGACY_MARKER_END = '{/* vitodeploy-filemanager-plugin:end */}';
 
-    public function install(string $pluginRoot, bool $forceLayout = false): void
+    public function install(string $pluginRoot, bool $forceLayout = false, bool $forceFrontend = false): void
     {
-        $this->publishFrontend($pluginRoot);
-        $this->patchServerLayout($pluginRoot, $forceLayout);
+        if ($forceFrontend || ! $this->isPublished()) {
+            $this->publishFrontend($pluginRoot);
+        }
+
+        if ($forceLayout || ! $this->isLayoutPatched()) {
+            $this->patchServerLayout($pluginRoot, $forceLayout);
+        }
+
         GetZiggyRoutes::forgetCache();
     }
 
@@ -57,6 +63,12 @@ final class InstallPluginAssets
 
         if (! File::isDirectory($source)) {
             throw new RuntimeException('File Manager plugin frontend sources are missing.');
+        }
+
+        if (File::isDirectory($target) && ! is_writable($target)) {
+            throw new RuntimeException(
+                'File Manager plugin cannot write to resources/js/pages/filemanager. Run: chown -R www-data:www-data resources/js/pages/filemanager'
+            );
         }
 
         if (File::isDirectory($target)) {
