@@ -25,21 +25,31 @@ import { toast } from 'sonner';
 
 type DialogMode = 'file' | 'directory' | 'rename' | 'compress';
 
+type PageProps = { server: Server; site: Site } & FileManagerPageProps;
+
 export default function FileManager() {
-  const page = usePage<{ server: Server; site: Site } & FileManagerPageProps>();
+  const page = usePage<PageProps>();
+
+  return (
+    <ServerLayout>
+      <Head title={`File Manager - ${page.props.site.domain}`} />
+      <FileManagerContent {...page.props} />
+    </ServerLayout>
+  );
+}
+
+function FileManagerContent({ server, site, initial_path, root_path, can_write }: PageProps) {
   const dialog = useDialog();
-  const [currentPath, setCurrentPath] = useState(page.props.initial_path);
+  const [currentPath, setCurrentPath] = useState(initial_path);
   const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [editFile, setEditFile] = useState<FileEntry | null>(null);
 
-  const canWrite = page.props.can_write;
-
   const listingQuery = useQuery({
-    queryKey: ['site-filemanager', page.props.server.id, page.props.site.id, currentPath],
+    queryKey: ['site-filemanager', server.id, site.id, currentPath],
     queryFn: async () => {
       const response = await axios.get<FileDirectoryListing>(
-        route('site-filemanager.entries', { server: page.props.server.id, site: page.props.site.id }),
+        route('site-filemanager.entries', { server: server.id, site: site.id }),
         { params: { path: currentPath } },
       );
 
@@ -52,10 +62,7 @@ export default function FileManager() {
     listingQuery.refetch();
   }, [listingQuery]);
 
-  const routeParams = useMemo(
-    () => ({ server: page.props.server.id, site: page.props.site.id }),
-    [page.props.server.id, page.props.site.id],
-  );
+  const routeParams = useMemo(() => ({ server: server.id, site: site.id }), [server.id, site.id]);
 
   const post = async (url: string, data: Record<string, unknown>) => {
     await axios.post(url, data);
@@ -181,83 +188,76 @@ export default function FileManager() {
   const activeDialog = dialogMode ? dialogCopy[dialogMode] : null;
 
   return (
-    <ServerLayout>
-      <Head title={`File Manager - ${page.props.site.domain}`} />
+    <Container className="max-w-6xl">
+      <HeaderContainer>
+        <Heading title="File Manager" description={`Manage files for ${site.domain}. Root: ${root_path}`} />
+      </HeaderContainer>
 
-      <Container className="max-w-6xl">
-        <HeaderContainer>
-          <Heading
-            title="File Manager"
-            description={`Manage files for ${page.props.site.domain}. Root: ${page.props.root_path}`}
-          />
-        </HeaderContainer>
+      <SiteBanners site={site} />
 
-        <SiteBanners site={page.props.site} />
+      <Alert>
+        <AlertDescription>
+          Files are managed over SSH as the site user. Large uploads pass through your Vito instance before reaching the server.
+        </AlertDescription>
+      </Alert>
 
-        <Alert>
-          <AlertDescription>
-            Files are managed over SSH as the site user. Large uploads pass through your Vito instance before reaching the server.
-          </AlertDescription>
-        </Alert>
-
-        <Card>
-          <CardHeader className="gap-4 space-y-0">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <FileBreadcrumbs path={currentPath} rootLabel={page.props.site.domain} onNavigate={setCurrentPath} />
-              {listingQuery.data?.parent !== null && listingQuery.data?.parent !== undefined && (
-                <Button variant="outline" size="sm" onClick={() => setCurrentPath(listingQuery.data?.parent ?? '')}>
-                  <ArrowUpIcon />
-                  Up
-                </Button>
-              )}
-            </div>
-            <FileToolbar
-              canWrite={canWrite}
-              loading={listingQuery.isFetching}
-              onRefresh={refresh}
-              onCreateFile={() => setDialogMode('file')}
-              onCreateDirectory={() => setDialogMode('directory')}
-              onCompress={() => {
-                if (!selectedEntry) {
-                  toast.error('Select a file or folder to compress.');
-                  return;
-                }
-                setDialogMode('compress');
-              }}
-              onUpload={uploadFile}
-            />
-          </CardHeader>
-          <CardContent>
-            {listingQuery.isLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            ) : listingQuery.isError ? (
-              <div className="text-destructive flex min-h-48 items-center justify-center rounded-lg border border-dashed">
-                Failed to load directory contents.
-              </div>
-            ) : (
-              <FileTable
-                entries={listingQuery.data?.entries ?? []}
-                canWrite={canWrite}
-                selectedPath={selectedEntry?.path ?? null}
-                onOpen={openEntry}
-                onEdit={(entry) => setEditFile(entry)}
-                onDownload={handleDownload}
-                onRename={(entry) => {
-                  setSelectedEntry(entry);
-                  setDialogMode('rename');
-                }}
-                onCopy={handleCopy}
-                onExtract={handleExtract}
-                onDelete={handleDelete}
-              />
+      <Card>
+        <CardHeader className="gap-4 space-y-0">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <FileBreadcrumbs path={currentPath} rootLabel={site.domain} onNavigate={setCurrentPath} />
+            {listingQuery.data?.parent !== null && listingQuery.data?.parent !== undefined && (
+              <Button variant="outline" size="sm" onClick={() => setCurrentPath(listingQuery.data?.parent ?? '')}>
+                <ArrowUpIcon />
+                Up
+              </Button>
             )}
-          </CardContent>
-        </Card>
-      </Container>
+          </div>
+          <FileToolbar
+            canWrite={can_write}
+            loading={listingQuery.isFetching}
+            onRefresh={refresh}
+            onCreateFile={() => setDialogMode('file')}
+            onCreateDirectory={() => setDialogMode('directory')}
+            onCompress={() => {
+              if (!selectedEntry) {
+                toast.error('Select a file or folder to compress.');
+                return;
+              }
+              setDialogMode('compress');
+            }}
+            onUpload={uploadFile}
+          />
+        </CardHeader>
+        <CardContent>
+          {listingQuery.isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : listingQuery.isError ? (
+            <div className="text-destructive flex min-h-48 items-center justify-center rounded-lg border border-dashed">
+              Failed to load directory contents.
+            </div>
+          ) : (
+            <FileTable
+              entries={listingQuery.data?.entries ?? []}
+              canWrite={can_write}
+              selectedPath={selectedEntry?.path ?? null}
+              onOpen={openEntry}
+              onEdit={(entry) => setEditFile(entry)}
+              onDownload={handleDownload}
+              onRename={(entry) => {
+                setSelectedEntry(entry);
+                setDialogMode('rename');
+              }}
+              onCopy={handleCopy}
+              onExtract={handleExtract}
+              onDelete={handleDelete}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       {activeDialog && (
         <NameDialog
@@ -276,11 +276,11 @@ export default function FileManager() {
       <EditFileSheet
         open={editFile !== null}
         onOpenChange={(open) => !open && setEditFile(null)}
-        server={page.props.server}
-        site={page.props.site}
+        server={server}
+        site={site}
         file={editFile}
         onSaved={refresh}
       />
-    </ServerLayout>
+    </Container>
   );
 }
