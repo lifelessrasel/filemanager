@@ -9,7 +9,7 @@ use Throwable;
 
 class PublishFileManagerAssetsCommand extends Command
 {
-    protected $signature = 'filemanager:publish {--check : Only report status}';
+    protected $signature = 'filemanager:publish {--check : Only report status} {--force : Re-apply the sidebar layout patch}';
 
     protected $description = 'Publish File Manager frontend pages and patch the site sidebar';
 
@@ -22,7 +22,7 @@ class PublishFileManagerAssetsCommand extends Command
         }
 
         try {
-            $assets->install($pluginRoot);
+            $assets->install($pluginRoot, (bool) $this->option('force'));
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 

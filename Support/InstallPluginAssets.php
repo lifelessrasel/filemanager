@@ -16,10 +16,10 @@ final class InstallPluginAssets
 
     private const string LEGACY_MARKER_END = '{/* vitodeploy-filemanager-plugin:end */}';
 
-    public function install(string $pluginRoot): void
+    public function install(string $pluginRoot, bool $forceLayout = false): void
     {
         $this->publishFrontend($pluginRoot);
-        $this->patchServerLayout($pluginRoot);
+        $this->patchServerLayout($pluginRoot, $forceLayout);
         GetZiggyRoutes::forgetCache();
     }
 
@@ -47,9 +47,7 @@ final class InstallPluginAssets
             return false;
         }
 
-        $contents = File::get($layoutPath);
-
-        return str_contains($contents, self::MARKER_START);
+        return $this->isLayoutPatchValid(File::get($layoutPath));
     }
 
     private function publishFrontend(string $pluginRoot): void
@@ -72,7 +70,7 @@ final class InstallPluginAssets
         }
     }
 
-    private function patchServerLayout(string $pluginRoot): void
+    private function patchServerLayout(string $pluginRoot, bool $forceLayout = false): void
     {
         $layoutPath = resource_path('js/layouts/server/layout.tsx');
         $patchPath = $pluginRoot.'/resources/patches/server-layout-nav.tsx.patch';
@@ -86,13 +84,13 @@ final class InstallPluginAssets
         }
 
         $contents = File::get($layoutPath);
-        if (str_contains($contents, self::MARKER_START) || str_contains($contents, self::LEGACY_MARKER_START)) {
-            $contents = $this->normalizeLegacyLayoutPatch($contents);
-            File::put($layoutPath, $contents);
 
+        if (! $forceLayout && $this->isLayoutPatchValid($contents)) {
             return;
         }
 
+        $contents = $this->removeLayoutPatch($contents);
+        $contents = $this->removeCorruptPatchFragments($contents);
         $contents = $this->ensureFolderIconImport($contents);
         $patch = trim(File::get($patchPath));
 
@@ -131,6 +129,31 @@ final class InstallPluginAssets
         );
     }
 
+    private function isLayoutPatchValid(string $contents): bool
+    {
+        if (! str_contains($contents, self::MARKER_START) || ! str_contains($contents, self::MARKER_END)) {
+            return false;
+        }
+
+        if (! str_contains($contents, "title: 'File Manager'")) {
+            return false;
+        }
+
+        if (str_contains($contents, self::LEGACY_MARKER_START) || str_contains($contents, self::LEGACY_MARKER_END)) {
+            return false;
+        }
+
+        if (preg_match('/\{\s*\/\/\s*vitodeploy-filemanager-plugin:/', $contents)) {
+            return false;
+        }
+
+        if (preg_match('/\{\s*\/\*\s*vitodeploy-filemanager-plugin:/', $contents)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function ensureFolderIconImport(string $contents): string
     {
         if (str_contains($contents, 'FolderIcon')) {
@@ -157,23 +180,11 @@ final class InstallPluginAssets
 
         $contents = File::get($layoutPath);
         $contents = $this->removeLayoutPatch($contents);
+        $contents = $this->removeCorruptPatchFragments($contents);
         $contents = str_replace("  FolderIcon,\n  GlobeIcon,\n", "  GlobeIcon,\n", $contents);
         $contents = str_replace("  FlameIcon,\n  FolderIcon,\n  GlobeIcon,\n", "  FlameIcon,\n  GlobeIcon,\n", $contents);
 
         File::put($layoutPath, $contents);
-    }
-
-    private function normalizeLegacyLayoutPatch(string $contents): string
-    {
-        if (! str_contains($contents, self::LEGACY_MARKER_START)) {
-            return $contents;
-        }
-
-        return str_replace(
-            [self::LEGACY_MARKER_START, self::LEGACY_MARKER_END],
-            [self::MARKER_START, self::MARKER_END],
-            $contents
-        );
     }
 
     private function removeLayoutPatch(string $contents): string
@@ -181,6 +192,25 @@ final class InstallPluginAssets
         $patterns = [
             '/\s*\/\/ vitodeploy-filemanager-plugin:start\s*\n\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"].*?\n\s*\},\s*\n\s*\/\/ vitodeploy-filemanager-plugin:end\s*/s',
             '/\s*\/\* vitodeploy-filemanager-plugin:start \*\/\s*\n\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"].*?\n\s*\},\s*\n\s*\/\* vitodeploy-filemanager-plugin:end \*\/\s*/s',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $contents = preg_replace($pattern, "\n", $contents) ?? $contents;
+        }
+
+        return $contents;
+    }
+
+    private function removeCorruptPatchFragments(string $contents): string
+    {
+        $patterns = [
+            '/\s*\{\/\/ vitodeploy-filemanager-plugin:start\s*\n/s',
+            '/\s*\{\/\* vitodeploy-filemanager-plugin:start \*\/\s*\n/s',
+            '/\s*\{\/\/ vitodeploy-filemanager-plugin:end\s*\n/s',
+            '/\s*\{\/\* vitodeploy-filemanager-plugin:end \*\/\s*\n/s',
+            '/\s*\/\/ vitodeploy-filemanager-plugin:start\s*\n/s',
+            '/\s*\/\/ vitodeploy-filemanager-plugin:end\s*\n/s',
+            '/\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"],\s*\n\s*href:\s*route\([\'"]site-filemanager[\'"].*?\n\s*\},\s*/s',
         ];
 
         foreach ($patterns as $pattern) {
