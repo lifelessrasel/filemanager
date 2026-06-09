@@ -94,6 +94,13 @@ final class InstallPluginAssets
         $contents = $this->ensureFolderIconImport($contents);
         $patch = trim(File::get($patchPath));
 
+        $patched = $this->insertPatchBeforeDomains($contents, $patch);
+        if ($patched !== null) {
+            File::put($layoutPath, $patched);
+
+            return;
+        }
+
         $needles = [
             "                icon: RocketIcon,\n              },\n              {\n                title: 'Domains'," => "'Domains'",
             "                icon: RocketIcon,\n              },\n              {\n                title: \"Domains\"," => '"Domains"',
@@ -187,6 +194,25 @@ final class InstallPluginAssets
         File::put($layoutPath, $contents);
     }
 
+    private function insertPatchBeforeDomains(string $contents, string $patch): ?string
+    {
+        $pattern = '/(                icon: RocketIcon,\n              \},)\s*'
+            .'(?:\{\/\* vitodeploy-filemanager-plugin:(?:start|end) \*\/\}\s*\n|'
+            .'\/\/ vitodeploy-filemanager-plugin:(?:start|end\)\s*\n|'
+            .'\{\s*\n\s*title: [\'"]File Manager[\'"].*?\n\s*\},\s*)*'
+            .'\s*(\{\s*\n\s*title: [\'"]Domains[\'"],)/s';
+
+        if (! preg_match($pattern, $contents, $matches)) {
+            return null;
+        }
+
+        return str_replace(
+            $matches[0],
+            $matches[1]."\n".$patch."\n              ".$matches[2],
+            $contents
+        );
+    }
+
     private function removeLayoutPatch(string $contents): string
     {
         $patterns = [
@@ -204,10 +230,10 @@ final class InstallPluginAssets
     private function removeCorruptPatchFragments(string $contents): string
     {
         $patterns = [
+            '/\s*\{\/\* vitodeploy-filemanager-plugin:start \*\/\}\s*\n/s',
+            '/\s*\{\/\* vitodeploy-filemanager-plugin:end \*\/\}\s*\n/s',
             '/\s*\{\/\/ vitodeploy-filemanager-plugin:start\s*\n/s',
-            '/\s*\{\/\* vitodeploy-filemanager-plugin:start \*\/\s*\n/s',
             '/\s*\{\/\/ vitodeploy-filemanager-plugin:end\s*\n/s',
-            '/\s*\{\/\* vitodeploy-filemanager-plugin:end \*\/\s*\n/s',
             '/\s*\/\/ vitodeploy-filemanager-plugin:start\s*\n/s',
             '/\s*\/\/ vitodeploy-filemanager-plugin:end\s*\n/s',
             '/\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"],\s*\n\s*href:\s*route\([\'"]site-filemanager[\'"].*?\n\s*\},\s*/s',
