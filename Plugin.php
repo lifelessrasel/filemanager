@@ -21,17 +21,6 @@ class Plugin extends AbstractPlugin
 
         Route::middleware(['web', 'auth', 'has-project'])
             ->group(__DIR__.'/routes/web.php');
-
-        $this->ensureAssetsPublished();
-    }
-
-    private function ensureAssetsPublished(): void
-    {
-        $assets = app(InstallPluginAssets::class);
-
-        if (! $assets->isPublished() || ! $assets->isLayoutPatched()) {
-            $assets->install(__DIR__);
-        }
     }
 
     public function install(): void
