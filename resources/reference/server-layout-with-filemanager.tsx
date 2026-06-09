@@ -1,0 +1,297 @@
+import { type NavItem } from '@/types';
+import {
+  BoxIcon,
+  ChartLineIcon,
+  ClockIcon,
+  CloudIcon,
+  CloudUploadIcon,
+  CogIcon,
+  CommandIcon,
+  DatabaseIcon,
+  FlameIcon,
+  FolderIcon,
+  GlobeIcon,
+  HomeIcon,
+  KeyIcon,
+  ListEndIcon,
+  ListIcon,
+  LockIcon,
+  LogsIcon,
+  MousePointerClickIcon,
+  NetworkIcon,
+  RocketIcon,
+  Settings2Icon,
+  ShieldIcon,
+  SignpostIcon,
+  UsersIcon,
+  WrenchIcon,
+} from 'lucide-react';
+import { ReactNode, useEffect } from 'react';
+import { Server } from '@/types/server';
+import ServerHeader from '@/pages/servers/components/header';
+import Layout from '@/layouts/app/layout';
+import { usePage } from '@inertiajs/react';
+import { Site } from '@/types/site';
+import PHPIcon from '@/icons/php';
+import siteHelper from '@/lib/site-helper';
+
+export default function ServerLayout({ children }: { children: ReactNode }) {
+  const page = usePage<{
+    server: Server;
+    site?: Site;
+  }>();
+
+  const isMenuDisabled = page.props.server.status !== 'ready';
+  const storedSite = siteHelper.getStoredSite();
+  const site = page.props.site || (storedSite?.server_id === page.props.server.id ? storedSite : null) || null;
+
+  useEffect(() => {
+    if (storedSite && storedSite.server_id !== page.props.server.id) {
+      siteHelper.storeSite(undefined);
+    }
+  }, [page.props.server.id, storedSite]);
+
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const sidebarNavItems: NavItem[] = [
+    {
+      title: 'Overview',
+      href: route('servers.show', { server: page.props.server.id }),
+      onlyActivePath: route('servers.show', { server: page.props.server.id }),
+      icon: HomeIcon,
+    },
+    {
+      title: 'Database',
+      href: route('databases', { server: page.props.server.id }),
+      icon: DatabaseIcon,
+      isDisabled: isMenuDisabled,
+      hidden: !page.props.server.services['database'],
+      children: [
+        {
+          title: 'Databases',
+          href: route('databases', { server: page.props.server.id }),
+          onlyActivePath: route('databases', { server: page.props.server.id }),
+          icon: DatabaseIcon,
+        },
+        {
+          title: 'Users',
+          href: route('database-users', { server: page.props.server.id }),
+          icon: UsersIcon,
+        },
+      ],
+    },
+    {
+      title: 'Backups',
+      href: route('backups', { server: page.props.server.id }),
+      icon: CloudUploadIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Sites',
+      href: route('sites', { server: page.props.server.id }),
+      icon: MousePointerClickIcon,
+      isDisabled: isMenuDisabled,
+      hidden: !page.props.server.services['webserver'],
+      children:
+        site && site.id
+          ? [
+              {
+                title: 'All sites',
+                href: route('sites', { server: page.props.server.id }),
+                onlyActivePath: route('sites', { server: page.props.server.id }),
+                icon: ListIcon,
+              },
+              {
+                title: 'Application',
+                href: route('application', { server: page.props.server.id, site: site.id }),
+                onlyActivePath: route('application', { server: page.props.server.id, site: site.id }),
+                icon: RocketIcon,
+              },
+              // vitodeploy-filemanager-plugin:start
+              {
+                title: 'File Manager',
+                href: route('site-filemanager', { server: page.props.server.id, site: site.id }),
+                onlyActivePath: route('site-filemanager', { server: page.props.server.id, site: site.id }),
+                icon: FolderIcon,
+                hidden: site.status !== 'ready',
+              },
+              // vitodeploy-filemanager-plugin:end
+              {
+                title: 'Domains',
+                href: route('hosted-domains', { server: page.props.server.id, site: site.id }),
+                onlyActivePath: route('hosted-domains', { server: page.props.server.id, site: site.id }),
+                icon: GlobeIcon,
+              },
+              {
+                title: 'Features',
+                href: route('site-features', { server: page.props.server.id, site: site.id }),
+                icon: BoxIcon,
+              },
+              {
+                title: 'Tooling',
+                href: route('site-tooling', { server: page.props.server.id, site: site.id }),
+                icon: WrenchIcon,
+                hidden: site.user === page.props.server.ssh_user || site.status !== 'ready',
+              },
+              {
+                title: 'Commands',
+                href: route('commands', { server: page.props.server.id, site: site.id }),
+                icon: CommandIcon,
+              },
+              {
+                title: 'Workers',
+                href: route('workers.site', { server: page.props.server.id, site: site.id }),
+                icon: ListEndIcon,
+                isDisabled: isMenuDisabled,
+                hidden: !page.props.server.services['process_manager'],
+              },
+              {
+                title: 'CronJobs',
+                href: route('cronjobs.site', { server: page.props.server.id, site: site.id }),
+                icon: ClockIcon,
+                isDisabled: isMenuDisabled,
+              },
+              {
+                title: 'Redirects',
+                href: route('redirects', { server: page.props.server.id, site: site.id }),
+                icon: SignpostIcon,
+              },
+              {
+                title: 'Logs',
+                href: route('sites.logs', { server: page.props.server.id, site: site.id }),
+                icon: LogsIcon,
+              },
+              {
+                title: 'Stats',
+                href: route('site-stats', { server: page.props.server.id, site: site.id }),
+                icon: ChartLineIcon,
+                isDisabled: isMenuDisabled,
+                hidden: !page.props.server.services['log_analysis'] || !site.stats_enabled,
+              },
+              {
+                title: 'Settings',
+                href: route('site-settings', { server: page.props.server.id, site: site.id }),
+                icon: Settings2Icon,
+              },
+            ]
+          : [],
+    },
+    {
+      title: 'PHP',
+      href: route('php', { server: page.props.server.id }),
+      icon: PHPIcon,
+      isDisabled: isMenuDisabled,
+      hidden: !page.props.server.services['php'],
+    },
+    {
+      title: 'Security',
+      href: route('security', { server: page.props.server.id }),
+      icon: ShieldIcon,
+      isDisabled: isMenuDisabled,
+      children: [
+        {
+          title: 'General',
+          href: route('security', { server: page.props.server.id }),
+          onlyActivePath: route('security', { server: page.props.server.id }),
+          icon: ShieldIcon,
+        },
+        {
+          title: 'Firewall',
+          href: route('firewall', { server: page.props.server.id }),
+          onlyActivePath: route('firewall', { server: page.props.server.id }),
+          icon: FlameIcon,
+          hidden: !page.props.server.services['firewall'],
+        },
+      ],
+    },
+    {
+      title: 'Network',
+      href: route('servers.network', { server: page.props.server.id }),
+      icon: NetworkIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'CronJobs',
+      href: route('cronjobs', { server: page.props.server.id }),
+      icon: ClockIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Workers',
+      href: route('workers', { server: page.props.server.id }),
+      icon: ListEndIcon,
+      isDisabled: isMenuDisabled,
+      hidden: !page.props.server.services['process_manager'],
+    },
+    {
+      title: 'SSH Keys',
+      href: route('server-ssh-keys', { server: page.props.server.id }),
+      icon: KeyIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'SSL',
+      href: route('server-ssls', { server: page.props.server.id }),
+      icon: LockIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Services',
+      href: route('services', { server: page.props.server.id }),
+      icon: CogIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Monitoring',
+      href: route('monitoring', { server: page.props.server.id }),
+      icon: ChartLineIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Logs',
+      href: route('logs', { server: page.props.server.id }),
+      icon: LogsIcon,
+      children: [
+        {
+          title: 'Server logs',
+          href: route('logs', { server: page.props.server.id }),
+          onlyActivePath: route('logs', { server: page.props.server.id }),
+          icon: LogsIcon,
+        },
+        {
+          title: 'Service logs',
+          href: route('logs.services', { server: page.props.server.id }),
+          onlyActivePath: route('logs.services', { server: page.props.server.id }),
+          icon: CogIcon,
+        },
+        {
+          title: 'Custom logs',
+          href: route('logs.remote', { server: page.props.server.id }),
+          onlyActivePath: route('logs.remote', { server: page.props.server.id }),
+          icon: CloudIcon,
+        },
+      ],
+    },
+    {
+      title: 'Features',
+      href: route('server-features', { server: page.props.server.id }),
+      icon: BoxIcon,
+      isDisabled: isMenuDisabled,
+    },
+    {
+      title: 'Settings',
+      href: route('server-settings', { server: page.props.server.id }),
+      icon: Settings2Icon,
+    },
+  ];
+
+  return (
+    <Layout secondNavItems={sidebarNavItems} secondNavTitle={page.props.server.name}>
+      <ServerHeader server={page.props.server} site={page.props.site} />
+
+      <div>{children}</div>
+    </Layout>
+  );
+}
