@@ -95,7 +95,10 @@ class FileManagerController extends Controller
         $this->authorize('update', [$site, $server]);
         $this->ensureReady($site);
 
-        app(UploadFile::class)->handle($site, $request->all());
+        app(UploadFile::class)->handle($site, [
+            'path' => $request->input('path'),
+            'file' => $request->file('file'),
+        ]);
 
         return response()->json(['message' => 'File uploaded.']);
     }

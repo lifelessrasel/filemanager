@@ -34,14 +34,31 @@ final readonly class UploadFile
         $remotePath = $directory.'/'.basename($uploadedFile->getClientOriginalName());
 
         $tmpName = Str::random(16);
+        $storedPath = $uploadedFile->storeAs('filemanager', $tmpName, 'local');
+
+        if (! is_string($storedPath)) {
+            throw ValidationException::withMessages([
+                'file' => __('Could not store the uploaded file.'),
+            ]);
+        }
+
+        $localPath = Storage::disk('local')->path($storedPath);
+        $tmpRemotePath = '/tmp/vito-fm-'.$tmpName;
 
         try {
-            Storage::disk('local')->putFileAs('', $uploadedFile, $tmpName);
-            $storedPath = Storage::disk('local')->path($tmpName);
-            $site->ssh()->upload($storedPath, $remotePath, $site->user, 'filemanager-upload', $site->id);
+            $ssh = $site->ssh();
+            $ssh->upload($localPath, $tmpRemotePath, $site->user, 'filemanager-upload', $site->id);
+            $ssh->asUser($site->user)->exec(
+                'cat '.escapeshellarg($tmpRemotePath).' > '.escapeshellarg($remotePath),
+                'filemanager-upload',
+                $site->id
+            );
         } finally {
-            if (Storage::disk('local')->exists($tmpName)) {
-                Storage::disk('local')->delete($tmpName);
+            Storage::disk('local')->delete($storedPath);
+
+            try {
+                $site->ssh()->exec('rm -f '.escapeshellarg($tmpRemotePath), 'filemanager-upload', $site->id);
+            } catch (Throwable) {
             }
         }
     }
