@@ -8,9 +8,13 @@ use RuntimeException;
 
 final class InstallPluginAssets
 {
-    private const string MARKER_START = '{/* vitodeploy-filemanager-plugin:start */}';
+    private const string MARKER_START = '// vitodeploy-filemanager-plugin:start';
 
-    private const string MARKER_END = '{/* vitodeploy-filemanager-plugin:end */}';
+    private const string MARKER_END = '// vitodeploy-filemanager-plugin:end';
+
+    private const string LEGACY_MARKER_START = '{/* vitodeploy-filemanager-plugin:start */}';
+
+    private const string LEGACY_MARKER_END = '{/* vitodeploy-filemanager-plugin:end */}';
 
     public function install(string $pluginRoot): void
     {
@@ -43,7 +47,9 @@ final class InstallPluginAssets
             return false;
         }
 
-        return str_contains(File::get($layoutPath), self::MARKER_START);
+        $contents = File::get($layoutPath);
+
+        return str_contains($contents, self::MARKER_START);
     }
 
     private function publishFrontend(string $pluginRoot): void
@@ -80,7 +86,10 @@ final class InstallPluginAssets
         }
 
         $contents = File::get($layoutPath);
-        if (str_contains($contents, self::MARKER_START)) {
+        if (str_contains($contents, self::MARKER_START) || str_contains($contents, self::LEGACY_MARKER_START)) {
+            $contents = $this->normalizeLegacyLayoutPatch($contents);
+            File::put($layoutPath, $contents);
+
             return;
         }
 
@@ -147,11 +156,37 @@ final class InstallPluginAssets
         }
 
         $contents = File::get($layoutPath);
-        $pattern = '/\s*\/\* vitodeploy-filemanager-plugin:start \*\/.*?\/\* vitodeploy-filemanager-plugin:end \*\/\s*/s';
-        $contents = preg_replace($pattern, "\n", $contents) ?? $contents;
+        $contents = $this->removeLayoutPatch($contents);
         $contents = str_replace("  FolderIcon,\n  GlobeIcon,\n", "  GlobeIcon,\n", $contents);
         $contents = str_replace("  FlameIcon,\n  FolderIcon,\n  GlobeIcon,\n", "  FlameIcon,\n  GlobeIcon,\n", $contents);
 
         File::put($layoutPath, $contents);
+    }
+
+    private function normalizeLegacyLayoutPatch(string $contents): string
+    {
+        if (! str_contains($contents, self::LEGACY_MARKER_START)) {
+            return $contents;
+        }
+
+        return str_replace(
+            [self::LEGACY_MARKER_START, self::LEGACY_MARKER_END],
+            [self::MARKER_START, self::MARKER_END],
+            $contents
+        );
+    }
+
+    private function removeLayoutPatch(string $contents): string
+    {
+        $patterns = [
+            '/\s*\/\/ vitodeploy-filemanager-plugin:start\s*\n\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"].*?\n\s*\},\s*\n\s*\/\/ vitodeploy-filemanager-plugin:end\s*/s',
+            '/\s*\/\* vitodeploy-filemanager-plugin:start \*\/\s*\n\s*\{\s*\n\s*title:\s*[\'"]File Manager[\'"].*?\n\s*\},\s*\n\s*\/\* vitodeploy-filemanager-plugin:end \*\/\s*/s',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $contents = preg_replace($pattern, "\n", $contents) ?? $contents;
+        }
+
+        return $contents;
     }
 }

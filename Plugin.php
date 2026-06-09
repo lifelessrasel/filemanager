@@ -29,11 +29,9 @@ class Plugin extends AbstractPlugin
     {
         $assets = app(InstallPluginAssets::class);
 
-        if ($assets->isPublished() && $assets->isLayoutPatched()) {
-            return;
+        if (! $assets->isPublished() || ! $assets->isLayoutPatched()) {
+            $assets->install(__DIR__);
         }
-
-        $assets->install(__DIR__);
     }
 
     public function install(): void

@@ -1,4 +1,4 @@
-              {/* vitodeploy-filemanager-plugin:start */}
+              // vitodeploy-filemanager-plugin:start
               {
                 title: 'File Manager',
                 href: route('site-filemanager', { server: page.props.server.id, site: site.id }),
@@ -6,4 +6,4 @@
                 icon: FolderIcon,
                 hidden: site.status !== 'ready',
               },
-              {/* vitodeploy-filemanager-plugin:end */}
+              // vitodeploy-filemanager-plugin:end
