@@ -11,7 +11,15 @@ final readonly class SitePathGuard
 
     public function root(): string
     {
-        return $this->normalize($this->site->path);
+        $path = trim((string) ($this->site->path ?? ''));
+
+        if ($path === '') {
+            throw ValidationException::withMessages([
+                'path' => __('Site path is not configured.'),
+            ]);
+        }
+
+        return $this->normalize($path);
     }
 
     /**

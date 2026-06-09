@@ -3,7 +3,9 @@
 namespace App\Vito\Plugins\Lifelessrasel\Filemanager;
 
 use App\Plugins\AbstractPlugin;
+use App\Plugins\RegisterCommand;
 use App\Plugins\RegisterViews;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Console\Commands\PublishFileManagerAssetsCommand;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Support\InstallPluginAssets;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +20,8 @@ class Plugin extends AbstractPlugin
         RegisterViews::make('filemanager-plugin')
             ->path(__DIR__.'/views')
             ->register();
+
+        RegisterCommand::make(PublishFileManagerAssetsCommand::class)->register();
 
         Route::middleware(['web', 'auth', 'has-project'])
             ->group(__DIR__.'/routes/web.php');
