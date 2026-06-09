@@ -7,7 +7,7 @@ use App\Vito\Plugins\Lifelessrasel\Filemanager\Support\SitePathGuard;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
-final readonly class WriteFileContent
+final readonly class MovePath
 {
     /**
      * @param  array<string, mixed>  $input
@@ -18,19 +18,24 @@ final readonly class WriteFileContent
     {
         $data = Validator::make($input, [
             'path' => ['required', 'string'],
-            'content' => ['present', 'string'],
+            'destination' => ['nullable', 'string'],
         ])->validate();
 
         $guard = new SitePathGuard($site);
-        $absolutePath = $guard->resolve($data['path']);
+        $source = $guard->resolve($data['path']);
+
+        if ($source === $guard->root()) {
+            throw ValidationException::withMessages([
+                'path' => __('The site root directory cannot be moved.'),
+            ]);
+        }
+
+        $destinationDirectory = $guard->resolve($data['destination'] ?? '');
+        $target = $destinationDirectory.'/'.basename($source);
 
         $site->ssh()->exec(
-            view('filemanager-plugin::write-content', [
-                'directory' => dirname($absolutePath),
-                'path' => $absolutePath,
-                'encoded' => base64_encode($data['content']),
-            ]),
-            'filemanager-write',
+            'mv '.escapeshellarg($source).' '.escapeshellarg($target),
+            'filemanager-move',
             $site->id
         );
     }

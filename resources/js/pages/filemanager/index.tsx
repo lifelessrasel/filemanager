@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Head, usePage } from '@inertiajs/react';
 import { useQuery } from '@tanstack/react-query';
@@ -12,11 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDialog } from '@/hooks/use-dialog';
+import BulkActionsBar from '@/pages/filemanager/components/bulk-actions-bar';
 import EditFileSheet from '@/pages/filemanager/components/edit-file-sheet';
 import FileBreadcrumbs from '@/pages/filemanager/components/file-breadcrumbs';
 import FileTable from '@/pages/filemanager/components/file-table';
 import FileToolbar from '@/pages/filemanager/components/file-toolbar';
 import NameDialog from '@/pages/filemanager/components/name-dialog';
+import PathDialog from '@/pages/filemanager/components/path-dialog';
+import PermissionsDialog from '@/pages/filemanager/components/permissions-dialog';
 import { fileManagerHeaders, getApiErrorMessage, postFormData, postJson } from '@/pages/filemanager/lib/api-client';
 import { FileDirectoryListing, FileEntry, FileManagerPageProps } from '@/pages/filemanager/types';
 import { SharedData } from '@/types';
@@ -44,10 +47,17 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
   const dialog = useDialog();
   const [currentPath, setCurrentPath] = useState(initial_path);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [selectedEntry, setSelectedEntry] = useState<FileEntry | null>(null);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialogProcessing, setDialogProcessing] = useState(false);
+  const [movePaths, setMovePaths] = useState<string[]>([]);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [permissionsEntry, setPermissionsEntry] = useState<FileEntry | null>(null);
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
+  const [permissionsProcessing, setPermissionsProcessing] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
   const [editFile, setEditFile] = useState<FileEntry | null>(null);
 
   const listingQuery = useQuery({
@@ -80,6 +90,47 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
     return entries.filter((entry) => entry.name.toLowerCase().includes(query));
   }, [entries, searchQuery]);
 
+  const selectedEntries = useMemo(
+    () => entries.filter((entry) => selectedPaths.has(entry.path)),
+    [entries, selectedPaths],
+  );
+
+  const allSelected = filteredEntries.length > 0 && filteredEntries.every((entry) => selectedPaths.has(entry.path));
+  const someSelected = filteredEntries.some((entry) => selectedPaths.has(entry.path));
+  const canBulkExtract = selectedEntries.some((entry) => entry.extractable);
+
+  useEffect(() => {
+    setSelectedPaths(new Set());
+    setSelectedEntry(null);
+  }, [currentPath]);
+
+  const clearSelection = () => {
+    setSelectedPaths(new Set());
+    setSelectedEntry(null);
+  };
+
+  const toggleSelect = (entry: FileEntry, checked: boolean) => {
+    setSelectedPaths((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(entry.path);
+      } else {
+        next.delete(entry.path);
+      }
+      return next;
+    });
+    setSelectedEntry(entry);
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (!checked) {
+      clearSelection();
+      return;
+    }
+
+    setSelectedPaths(new Set(filteredEntries.map((entry) => entry.path)));
+  };
+
   const openDialog = (mode: DialogMode) => {
     setDialogError(null);
     setDialogMode(mode);
@@ -92,25 +143,32 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
   };
 
   const mutate = async (url: string, data: Record<string, unknown>, successMessage: string) => {
+    await postJson(csrf_token, url, data);
+    toast.success(successMessage);
+    refresh();
+  };
+
+  const runBulk = async (url: string, data: Record<string, unknown>, successMessage: string) => {
+    setBulkLoading(true);
     try {
-      await postJson(csrf_token, url, data);
-      toast.success(successMessage);
-      refresh();
+      await mutate(url, data, successMessage);
+      clearSelection();
     } catch (error) {
       toast.error(getApiErrorMessage(error));
-      throw error;
+    } finally {
+      setBulkLoading(false);
     }
   };
 
   const openEntry = (entry: FileEntry) => {
     if (entry.type === 'directory') {
       setCurrentPath(entry.path);
-      setSelectedEntry(null);
       setSearchQuery('');
       return;
     }
 
     setSelectedEntry(entry);
+    setSelectedPaths(new Set([entry.path]));
   };
 
   const uploadFile = async (file: File) => {
@@ -118,10 +176,14 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
     formData.append('path', currentPath);
     formData.append('file', file);
 
+    await postFormData(csrf_token, route('site-filemanager.upload', routeParams), formData);
+    toast.success(`${file.name} uploaded.`);
+    refresh();
+  };
+
+  const handleUpload = async (file: File) => {
     try {
-      await postFormData(csrf_token, route('site-filemanager.upload', routeParams), formData);
-      toast.success('File uploaded.');
-      refresh();
+      await uploadFile(file);
     } catch (error) {
       toast.error(getApiErrorMessage(error));
     }
@@ -138,9 +200,29 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
       data: { path: entry.path },
       onSuccess: () => {
         toast.success('Deleted successfully.');
-        if (selectedEntry?.path === entry.path) {
-          setSelectedEntry(null);
-        }
+        setSelectedPaths((current) => {
+          const next = new Set(current);
+          next.delete(entry.path);
+          return next;
+        });
+        refresh();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    const paths = Array.from(selectedPaths);
+    dialog.confirm.open({
+      title: `Delete ${paths.length} items?`,
+      description: 'This will permanently delete the selected files and folders.',
+      variant: 'destructive',
+      confirmLabel: 'Delete',
+      method: 'post',
+      url: route('site-filemanager.bulk.destroy', routeParams),
+      data: Object.fromEntries(paths.map((path, index) => [`paths[${index}]`, path])),
+      onSuccess: () => {
+        toast.success('Deleted successfully.');
+        clearSelection();
         refresh();
       },
     });
@@ -148,22 +230,72 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
 
   const handleCopy = async (entry: FileEntry) => {
     try {
-      await mutate(
-        route('site-filemanager.copy', routeParams),
-        { path: entry.path, destination: currentPath },
-        'Copied successfully.',
-      );
-    } catch {
-      return;
+      await mutate(route('site-filemanager.copy', routeParams), { path: entry.path, destination: currentPath }, 'Copied successfully.');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
+    }
+  };
+
+  const handleBulkCopy = () => {
+    void runBulk(
+      route('site-filemanager.bulk.copy', routeParams),
+      { paths: Array.from(selectedPaths), destination: currentPath },
+      'Copied successfully.',
+    );
+  };
+
+  const openMoveDialog = (paths: string[]) => {
+    setMovePaths(paths);
+    setDialogError(null);
+    setMoveDialogOpen(true);
+  };
+
+  const submitMove = async (destination: string) => {
+    setDialogProcessing(true);
+    setDialogError(null);
+
+    const targetDestination = destination.trim() === '' ? currentPath : destination.trim();
+
+    try {
+      if (movePaths.length === 1) {
+        await mutate(
+          route('site-filemanager.move', routeParams),
+          { path: movePaths[0], destination: targetDestination },
+          'Moved successfully.',
+        );
+      } else {
+        await mutate(
+          route('site-filemanager.bulk.move', routeParams),
+          { paths: movePaths, destination: targetDestination },
+          'Moved successfully.',
+        );
+      }
+
+      setMoveDialogOpen(false);
+      clearSelection();
+    } catch (error) {
+      setDialogError(getApiErrorMessage(error));
+    } finally {
+      setDialogProcessing(false);
     }
   };
 
   const handleExtract = async (entry: FileEntry) => {
     try {
       await mutate(route('site-filemanager.extract', routeParams), { path: entry.path }, 'Archive extracted.');
-    } catch {
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
+    }
+  };
+
+  const handleBulkUnzip = () => {
+    const paths = selectedEntries.filter((entry) => entry.extractable).map((entry) => entry.path);
+    if (paths.length === 0) {
+      toast.error('Select at least one archive to unzip.');
       return;
     }
+
+    void runBulk(route('site-filemanager.bulk.extract', routeParams), { paths }, 'Archive extracted.');
   };
 
   const handleDownload = (entry: FileEntry) => {
@@ -171,11 +303,36 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
   };
 
   const handleCompress = () => {
-    if (!selectedEntry) {
-      toast.error('Select a file or folder to compress.');
+    const paths = selectedPaths.size > 0 ? Array.from(selectedPaths) : selectedEntry ? [selectedEntry.path] : [];
+    if (paths.length === 0) {
+      toast.error('Select at least one item to compress.');
       return;
     }
+
+    setSelectedPaths(new Set(paths));
     openDialog('compress');
+  };
+
+  const submitPermissions = async (permissions: string) => {
+    if (!permissionsEntry) {
+      return;
+    }
+
+    setPermissionsProcessing(true);
+    setPermissionsError(null);
+
+    try {
+      await mutate(
+        route('site-filemanager.permissions', routeParams),
+        { path: permissionsEntry.path, permissions },
+        'Permissions updated.',
+      );
+      setPermissionsEntry(null);
+    } catch (error) {
+      setPermissionsError(getApiErrorMessage(error));
+    } finally {
+      setPermissionsProcessing(false);
+    }
   };
 
   const submitNameDialog = async (name: string) => {
@@ -189,8 +346,20 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
         await mutate(route('site-filemanager.directories.store', routeParams), { path: currentPath, name }, 'Directory created.');
       } else if (dialogMode === 'rename' && selectedEntry) {
         await mutate(route('site-filemanager.rename', routeParams), { path: selectedEntry.path, name }, 'Renamed successfully.');
-      } else if (dialogMode === 'compress' && selectedEntry) {
-        await mutate(route('site-filemanager.compress', routeParams), { path: selectedEntry.path, name }, 'Archive created.');
+      } else if (dialogMode === 'compress') {
+        const paths = Array.from(selectedPaths);
+        if (paths.length > 1) {
+          await mutate(
+            route('site-filemanager.bulk.compress', routeParams),
+            { paths, name, destination: currentPath },
+            'Archive created.',
+          );
+        } else if (paths.length === 1) {
+          await mutate(route('site-filemanager.compress', routeParams), { path: paths[0], name }, 'Archive created.');
+        } else if (selectedEntry) {
+          await mutate(route('site-filemanager.compress', routeParams), { path: selectedEntry.path, name }, 'Archive created.');
+        }
+        clearSelection();
       }
 
       closeDialog();
@@ -225,10 +394,10 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
     },
     compress: {
       title: 'Compress',
-      description: 'Create a zip archive from the selected item.',
+      description: 'Create a zip archive from the selected items.',
       label: 'Archive name',
       confirmLabel: 'Compress',
-      defaultValue: selectedEntry ? `${selectedEntry.name}.zip` : 'archive.zip',
+      defaultValue: selectedEntries.length === 1 ? `${selectedEntries[0].name}.zip` : 'archive.zip',
     },
   } as const;
 
@@ -247,7 +416,7 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
           onCreateFile={() => openDialog('file')}
           onCreateDirectory={() => openDialog('directory')}
           onCompress={handleCompress}
-          onUpload={uploadFile}
+          onUpload={handleUpload}
         />
       </HeaderContainer>
 
@@ -285,6 +454,20 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
           </div>
         </div>
 
+        {selectedPaths.size > 0 && can_write && (
+          <BulkActionsBar
+            count={selectedPaths.size}
+            canExtract={canBulkExtract}
+            loading={bulkLoading}
+            onClear={clearSelection}
+            onCopy={handleBulkCopy}
+            onMove={() => openMoveDialog(Array.from(selectedPaths))}
+            onCompress={handleCompress}
+            onUnzip={handleBulkUnzip}
+            onDelete={handleBulkDelete}
+          />
+        )}
+
         {listingQuery.isLoading ? (
           <div className="space-y-0 p-4">
             <Skeleton className="mb-3 h-10 w-full" />
@@ -300,27 +483,35 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
             <FileTable
               entries={filteredEntries}
               canWrite={can_write}
-              selectedPath={selectedEntry?.path ?? null}
+              selectedPaths={selectedPaths}
               filtered={isFiltering}
+              allSelected={allSelected}
+              someSelected={someSelected}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
               onOpen={openEntry}
               onEdit={(entry) => setEditFile(entry)}
               onDownload={handleDownload}
               onRename={(entry) => {
                 setSelectedEntry(entry);
+                setSelectedPaths(new Set([entry.path]));
                 openDialog('rename');
               }}
               onCopy={handleCopy}
+              onMove={(entry) => openMoveDialog([entry.path])}
               onExtract={handleExtract}
+              onPermissions={(entry) => {
+                setPermissionsEntry(entry);
+                setPermissionsError(null);
+              }}
               onDelete={handleDelete}
             />
-            <div className="text-muted-foreground flex flex-col gap-1 border-t px-4 py-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-              <span>
-                {isFiltering ? `${filteredEntries.length} of ${entries.length}` : entries.length}{' '}
-                {entries.length === 1 ? 'item' : 'items'}
-              </span>
-              {selectedEntry && (
+            <div className="text-muted-foreground border-t px-4 py-2 text-xs">
+              {isFiltering ? `${filteredEntries.length} of ${entries.length}` : entries.length} {entries.length === 1 ? 'item' : 'items'}
+              {selectedPaths.size > 0 && (
                 <span>
-                  Selected: <span className="text-foreground font-medium">{selectedEntry.name}</span>
+                  {' '}
+                  · {selectedPaths.size} selected
                 </span>
               )}
             </div>
@@ -343,6 +534,28 @@ function FileManagerContent({ server, site, initial_path, can_write }: PageProps
           onSubmit={submitNameDialog}
         />
       )}
+
+      <PathDialog
+        open={moveDialogOpen}
+        onOpenChange={setMoveDialogOpen}
+        title={movePaths.length > 1 ? `Move ${movePaths.length} items` : 'Move item'}
+        description="Enter the destination folder path relative to the site root. Leave empty to move into the current folder."
+        label="Destination folder"
+        defaultValue={currentPath}
+        confirmLabel="Move"
+        error={dialogError}
+        processing={dialogProcessing}
+        onSubmit={submitMove}
+      />
+
+      <PermissionsDialog
+        open={permissionsEntry !== null}
+        onOpenChange={(open) => !open && setPermissionsEntry(null)}
+        defaultValue={permissionsEntry?.permissions ?? '644'}
+        error={permissionsError}
+        processing={permissionsProcessing}
+        onSubmit={submitPermissions}
+      />
 
       <EditFileSheet
         open={editFile !== null}

@@ -78,7 +78,14 @@ final readonly class ListDirectory
             $entryRelative = $relativePath === '' ? $name : $relativePath.'/'.$name;
             $guard->resolve($entryRelative);
 
-            $extension = pathinfo($name, PATHINFO_EXTENSION);
+            $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            $lowerName = strtolower($name);
+
+            $extractable = $type === 'file' && (
+                in_array($extension, ['zip', 'tar', 'gz', 'bz2', 'tgz'], true)
+                || str_ends_with($lowerName, '.tar.gz')
+                || str_ends_with($lowerName, '.tar.bz2')
+            );
 
             $entries[] = [
                 'name' => $name,
@@ -89,7 +96,7 @@ final readonly class ListDirectory
                 'owner' => $matches[3],
                 'group' => $matches[4],
                 'modified_at' => trim($matches[6]),
-                'extractable' => $type === 'file' && in_array(strtolower($extension), ['zip', 'tar', 'gz', 'bz2'], true),
+                'extractable' => $extractable,
             ];
         }
 

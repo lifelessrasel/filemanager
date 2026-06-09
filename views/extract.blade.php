@@ -3,13 +3,15 @@
 @endphp
 
 @if(str_ends_with(strtolower($basename), '.zip'))
-unzip -o {{ $path }} -d {{ $destination }}
+unzip -o {!! $quotedPath !!} -d {!! $quotedDestination !!}
 @elseif(str_ends_with(strtolower($basename), '.tar.gz') || str_ends_with(strtolower($basename), '.tgz'))
-tar -xzf {{ $path }} -C {{ $destination }}
+tar -xzf {!! $quotedPath !!} -C {!! $quotedDestination !!}
 @elseif(str_ends_with(strtolower($basename), '.tar.bz2'))
-tar -xjf {{ $path }} -C {{ $destination }}
+tar -xjf {!! $quotedPath !!} -C {!! $quotedDestination !!}
 @elseif(str_ends_with(strtolower($basename), '.tar'))
-tar -xf {{ $path }} -C {{ $destination }}
+tar -xf {!! $quotedPath !!} -C {!! $quotedDestination !!}
+@elseif(str_ends_with(strtolower($basename), '.gz') && ! str_contains(strtolower($basename), '.tar.'))
+gzip -dc {!! $quotedPath !!} > {!! $quotedDestination !!}/{{ basename($path, '.gz') }}
 @else
-echo "Unsupported archive format"
+echo "VITO_SSH_ERROR: Unsupported archive format" && exit 1
 @endif

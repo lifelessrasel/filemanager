@@ -27,7 +27,8 @@ final readonly class ExtractArchive
         $site->ssh()->exec(
             view('filemanager-plugin::extract', [
                 'path' => $absolutePath,
-                'destination' => $destination,
+                'quotedPath' => escapeshellarg($absolutePath),
+                'quotedDestination' => escapeshellarg($destination),
             ]),
             'filemanager-extract',
             $site->id

@@ -16,5 +16,12 @@ Route::prefix('servers/{server}/sites/{site}/filemanager')->group(function (): v
     Route::post('/extract', [FileManagerController::class, 'extract'])->name('site-filemanager.extract');
     Route::post('/rename', [FileManagerController::class, 'rename'])->name('site-filemanager.rename');
     Route::post('/copy', [FileManagerController::class, 'copy'])->name('site-filemanager.copy');
+    Route::post('/move', [FileManagerController::class, 'move'])->name('site-filemanager.move');
     Route::post('/compress', [FileManagerController::class, 'compress'])->name('site-filemanager.compress');
+    Route::post('/permissions', [FileManagerController::class, 'permissions'])->name('site-filemanager.permissions');
+    Route::post('/bulk/delete', [FileManagerController::class, 'bulkDestroy'])->name('site-filemanager.bulk.destroy');
+    Route::post('/bulk/copy', [FileManagerController::class, 'bulkCopy'])->name('site-filemanager.bulk.copy');
+    Route::post('/bulk/move', [FileManagerController::class, 'bulkMove'])->name('site-filemanager.bulk.move');
+    Route::post('/bulk/extract', [FileManagerController::class, 'bulkExtract'])->name('site-filemanager.bulk.extract');
+    Route::post('/bulk/compress', [FileManagerController::class, 'bulkCompress'])->name('site-filemanager.bulk.compress');
 });

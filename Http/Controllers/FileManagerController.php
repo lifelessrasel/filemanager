@@ -5,6 +5,11 @@ namespace App\Vito\Plugins\Lifelessrasel\Filemanager\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Server;
 use App\Models\Site;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\BulkCompressPaths;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\BulkCopyPaths;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\BulkDeletePaths;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\BulkExtractPaths;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\BulkMovePaths;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\CompressPath;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\CopyPath;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\CreateDirectory;
@@ -13,8 +18,10 @@ use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\DeletePath;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\DownloadFile;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\ExtractArchive;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\ListDirectory;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\MovePath;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\ReadFileContent;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\RenamePath;
+use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\UpdatePermissions;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\UploadFile;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Actions\WriteFileContent;
 use App\Vito\Plugins\Lifelessrasel\Filemanager\Support\SitePathGuard;
@@ -157,6 +164,76 @@ class FileManagerController extends Controller
         $this->ensureReady($site);
 
         app(CompressPath::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Archive created.']);
+    }
+
+    public function move(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(MovePath::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Moved successfully.']);
+    }
+
+    public function permissions(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(UpdatePermissions::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Permissions updated.']);
+    }
+
+    public function bulkDestroy(Request $request, Server $server, Site $site): RedirectResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(BulkDeletePaths::class)->handle($site, $request->all());
+
+        return back()->with('success', 'Deleted successfully.');
+    }
+
+    public function bulkCopy(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(BulkCopyPaths::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Copied successfully.']);
+    }
+
+    public function bulkMove(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(BulkMovePaths::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Moved successfully.']);
+    }
+
+    public function bulkExtract(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(BulkExtractPaths::class)->handle($site, $request->all());
+
+        return response()->json(['message' => 'Archive extracted.']);
+    }
+
+    public function bulkCompress(Request $request, Server $server, Site $site): JsonResponse
+    {
+        $this->authorize('update', [$site, $server]);
+        $this->ensureReady($site);
+
+        app(BulkCompressPaths::class)->handle($site, $request->all());
 
         return response()->json(['message' => 'Archive created.']);
     }

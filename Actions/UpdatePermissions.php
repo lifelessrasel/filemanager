@@ -7,7 +7,7 @@ use App\Vito\Plugins\Lifelessrasel\Filemanager\Support\SitePathGuard;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
-final readonly class CreateFile
+final readonly class UpdatePermissions
 {
     /**
      * @param  array<string, mixed>  $input
@@ -17,21 +17,16 @@ final readonly class CreateFile
     public function handle(Site $site, array $input): void
     {
         $data = Validator::make($input, [
-            'path' => ['nullable', 'string'],
-            'name' => ['required', 'string', 'regex:/^[^\/\\\\]+$/'],
+            'path' => ['required', 'string'],
+            'permissions' => ['required', 'string', 'regex:/^[0-7]{3,4}$/'],
         ])->validate();
 
         $guard = new SitePathGuard($site);
-        $directory = $guard->resolve($data['path'] ?? '');
-        $absolutePath = $directory.'/'.trim($data['name']);
+        $absolutePath = $guard->resolve($data['path']);
 
         $site->ssh()->exec(
-            view('filemanager-plugin::write-content', [
-                'directory' => $directory,
-                'path' => $absolutePath,
-                'encoded' => '',
-            ]),
-            'filemanager-create-file',
+            'chmod '.escapeshellarg($data['permissions']).' '.escapeshellarg($absolutePath),
+            'filemanager-chmod',
             $site->id
         );
     }

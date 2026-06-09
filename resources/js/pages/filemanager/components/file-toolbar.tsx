@@ -32,16 +32,18 @@ export default function FileToolbar({
   const [uploading, setUploading] = useState(false);
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = event.target.files;
     event.target.value = '';
 
-    if (!file) {
+    if (!files || files.length === 0) {
       return;
     }
 
     setUploading(true);
     try {
-      await onUpload(file);
+      for (const file of Array.from(files)) {
+        await onUpload(file);
+      }
     } finally {
       setUploading(false);
     }
@@ -81,7 +83,7 @@ export default function FileToolbar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <input ref={inputRef} type="file" className="hidden" onChange={handleUpload} />
+          <input ref={inputRef} type="file" className="hidden" multiple onChange={handleUpload} />
         </>
       )}
     </div>

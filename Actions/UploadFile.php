@@ -13,6 +13,8 @@ use Throwable;
 
 final readonly class UploadFile
 {
+    private const CHUNK_SIZE = 524288;
+
     /**
      * @param  array<string, mixed>  $input
      *
@@ -43,23 +45,46 @@ final readonly class UploadFile
         }
 
         $localPath = Storage::disk('local')->path($storedPath);
-        $tmpRemotePath = '/tmp/vito-fm-'.$tmpName;
+        $handle = fopen($localPath, 'rb');
 
-        try {
-            $ssh = $site->ssh();
-            $ssh->upload($localPath, $tmpRemotePath, $site->user, 'filemanager-upload', $site->id);
-            $ssh->asUser($site->user)->exec(
-                'cat '.escapeshellarg($tmpRemotePath).' > '.escapeshellarg($remotePath),
-                'filemanager-upload',
-                $site->id
-            );
-        } finally {
+        if ($handle === false) {
             Storage::disk('local')->delete($storedPath);
 
-            try {
-                $site->ssh()->exec('rm -f '.escapeshellarg($tmpRemotePath), 'filemanager-upload', $site->id);
-            } catch (Throwable) {
+            throw ValidationException::withMessages([
+                'file' => __('Could not read the uploaded file.'),
+            ]);
+        }
+
+        try {
+            $append = false;
+
+            while (! feof($handle)) {
+                $chunk = fread($handle, self::CHUNK_SIZE);
+
+                if ($chunk === false) {
+                    break;
+                }
+
+                if ($chunk === '' && $append) {
+                    break;
+                }
+
+                $site->ssh()->exec(
+                    view('filemanager-plugin::upload', [
+                        'directory' => $directory,
+                        'path' => $remotePath,
+                        'encoded' => base64_encode($chunk),
+                        'append' => $append,
+                    ]),
+                    'filemanager-upload',
+                    $site->id
+                );
+
+                $append = true;
             }
+        } finally {
+            fclose($handle);
+            Storage::disk('local')->delete($storedPath);
         }
     }
 }
