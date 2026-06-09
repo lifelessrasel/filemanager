@@ -18,7 +18,7 @@ final class InstallPluginAssets
 
     public function install(string $pluginRoot, bool $forceLayout = false, bool $forceFrontend = false): void
     {
-        if ($forceFrontend || ! $this->isPublished()) {
+        if ($forceFrontend || ! $this->frontendMatchesPlugin($pluginRoot)) {
             $this->publishFrontend($pluginRoot);
         }
 
@@ -43,6 +43,39 @@ final class InstallPluginAssets
     public function isPublished(): bool
     {
         return File::exists(resource_path('js/pages/filemanager/index.tsx'));
+    }
+
+    private function frontendMatchesPlugin(string $pluginRoot): bool
+    {
+        if (! $this->isPublished()) {
+            return false;
+        }
+
+        $source = $pluginRoot.'/resources/js/pages/filemanager';
+        $target = resource_path('js/pages/filemanager');
+
+        if (! File::isDirectory($source)) {
+            return false;
+        }
+
+        foreach (File::allFiles($source) as $file) {
+            $relative = $file->getRelativePathname();
+            $published = $target.DIRECTORY_SEPARATOR.$relative;
+
+            if (! File::exists($published)) {
+                return false;
+            }
+
+            if (File::size($published) !== $file->getSize()) {
+                return false;
+            }
+
+            if (File::lastModified($published) < $file->getMTime()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function isLayoutPatched(): bool

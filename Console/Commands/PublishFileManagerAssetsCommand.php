@@ -48,6 +48,8 @@ class PublishFileManagerAssetsCommand extends Command
         $this->line('Page source: '.($assets->isPublished() ? 'OK' : 'MISSING')." ({$pagePath})");
         $this->line('Sidebar patch: '.($assets->isLayoutPatched() ? 'OK' : 'MISSING'));
         $this->line('Vite manifest: '.($manifestHasPage ? 'OK' : 'MISSING — run npm run build'));
+        $this->newLine();
+        $this->line('After updating the plugin, run <fg=yellow>php artisan filemanager:publish --force</> then <fg=yellow>npm run build</>.');
 
         if (! $assets->isPublished() || ! $assets->isLayoutPatched() || ! $manifestHasPage) {
             return self::FAILURE;
